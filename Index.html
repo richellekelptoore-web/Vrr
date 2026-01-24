@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>360° VR Elevator</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <style>
+      body { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <a-scene>
+      <!-- Elevator Cabin -->
+      <a-box position="0 1.5 -3" depth="2" height="3" width="2" color="#555" 
+             material="side: double; color: #888; opacity: 0.9;"></a-box>
+
+      <!-- Floor -->
+      <a-plane rotation="-90 0 0" width="10" height="10" color="#222"></a-plane>
+
+      <!-- Ceiling -->
+      <a-plane position="0 3 0" rotation="90 0 0" width="10" height="10" color="#333"></a-plane>
+
+      <!-- Buttons Panel -->
+      <a-box position="0.8 1.5 -2.99" depth="0.05" height="1" width="0.4" color="#444"></a-box>
+
+      <!-- Elevator Doors (front) -->
+      <a-box id="leftDoor" position="-0.5 1.5 -2.99" depth="0.05" height="3" width="0.9" color="#666"></a-box>
+      <a-box id="rightDoor" position="0.5 1.5 -2.99" depth="0.05" height="3" width="0.9" color="#666"></a-box>
+
+      <!-- Camera / Player -->
+      <a-entity camera look-controls wasd-controls position="0 1.6 0"></a-entity>
+
+      <!-- Lights -->
+      <a-entity light="type: ambient; color: #aaa"></a-entity>
+      <a-entity light="type: point; intensity: 1; distance: 10" position="0 3 0"></a-entity>
+    </a-scene>
+
+    <script>
+      // Simple elevator door animation
+      const leftDoor = document.querySelector('#leftDoor');
+      const rightDoor = document.querySelector('#rightDoor');
+
+      function openDoors() {
+        leftDoor.setAttribute('animation', 'property: position; to: -1.5 1.5 -2.99; dur: 2000; easing: easeInOutQuad');
+        rightDoor.setAttribute('animation', 'property: position; to: 1.5 1.5 -2.99; dur: 2000; easing: easeInOutQuad');
+      }
+
+      function closeDoors() {
+        leftDoor.setAttribute('animation', 'property: position; to: -0.5 1.5 -2.99; dur: 2000; easing: easeInOutQuad');
+        rightDoor.setAttribute('animation', 'property: position; to: 0.5 1.5 -2.99; dur: 2000; easing: easeInOutQuad');
+      }
+
+      // Open doors after 1 second
+      setTimeout(openDoors, 1000);
+      // Close doors after 5 seconds
+      setTimeout(closeDoors, 5000);
+    </script>
+  </body>
+</html>
