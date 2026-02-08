@@ -1,106 +1,181 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Snow Island VR</title>
-  <style>body{margin:0;overflow:hidden}canvas{display:block}</style>
-</head>
-<body>
-<script src="https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.154.0/examples/jsm/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.154.0/examples/jsm/webxr/VRButton.js"></script>
-<script>
-let scene = new THREE.Scene();
-scene.background = new THREE.Color(0x88ccff);
-let camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
-let renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-renderer.xr.enabled = true;
-document.body.appendChild(renderer.domElement);
-document.body.appendChild(VRButton.createButton(renderer));
+  <head>
+    <title>VR Ball Sorter</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
 
-// Lights
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.0));
-let dir = new THREE.DirectionalLight(0xffffff,0.8); dir.position.set(5,10,2); scene.add(dir);
+    <script>
+      // 1. GAME LOGIC COMPONENT
+      AFRAME.registerComponent('game-logic', {
+        init: function () {
+          this.score = 0;
+          this.totalBalls = 10;
+          this.balls = [];
+          this.boxZone = { xMin: -1, xMax: 1, zMin: -6, zMax: -4 }; // Area of the box
+          this.uiText = document.querySelector('#ui-text');
+          this.winText = document.querySelector('#win-text');
+          
+          // Generate Balls
+          this.spawnBalls();
 
-// Island
-let island = new THREE.Mesh(
-  new THREE.CylinderGeometry(12,18,4,32),
-  new THREE.MeshStandardMaterial({color:0xeeeeff})
-);
-island.position.y = -2; island.receiveShadow = true; scene.add(island);
+          // Listen for X button on controllers to reset
+          this.el.sceneEl.addEventListener('xbuttondown', () => { this.resetGame(); });
+          this.el.sceneEl.addEventListener('abuttondown', () => { this.resetGame(); }); // A button as backup
+          
+          // Keyboard backup for testing on PC (Press 'R')
+          window.addEventListener('keydown', (e) => {
+            if(e.key === 'r' || e.key === 'x') this.resetGame();
+          });
+        },
 
-// Snow layer
-let snowMat = new THREE.MeshStandardMaterial({color:0xffffff});
-let snow = new THREE.Mesh(new THREE.CircleGeometry(11,32), snowMat);
-snow.rotation.x = -Math.PI/2; snow.position.y = 0.01; scene.add(snow);
+        spawnBalls: function() {
+          let scene = this.el.sceneEl;
+          for (let i = 0; i < this.totalBalls; i++) {
+            let ball = document.createElement('a-sphere');
+            ball.setAttribute('radius', '0.2');
+            ball.setAttribute('color', 'red');
+            ball.setAttribute('position', {
+              x: (Math.random() * 4) - 2, 
+              y: 2 + (Math.random() * 2), 
+              z: (Math.random() * 4) - 2
+            });
+            ball.setAttribute('dynamic-body', 'shape: sphere; mass: 1');
+            ball.setAttribute('grabbable', '');
+            ball.setAttribute('class', 'ball');
+            ball.setAttribute('shadow', '');
+            scene.appendChild(ball);
+            this.balls.push(ball);
+          }
+        },
 
-// Snow particle system
-let particles = new THREE.BufferGeometry();
-let count = 800;
-let pos = new Float32Array(count*3);
-for(let i=0;i<count;i++){
-  pos[3*i] = (Math.random()-0.5)*30;
-  pos[3*i+1] = Math.random()*15 + 2;
-  pos[3*i+2] = (Math.random()-0.5)*30;
-}
-particles.setAttribute('position', new THREE.BufferAttribute(pos,3));
-let pMat = new THREE.PointsMaterial({color:0xffffff, size:0.12, transparent:true, opacity:0.9});
-let snowPoints = new THREE.Points(particles,pMat); scene.add(snowPoints);
+        tick: function () {
+          // Check win condition every frame
+          let currentScore = 0;
+          
+          this.balls.forEach(ball => {
+            let pos = ball.object3D.position;
+            // Check if ball is inside the hollow box coordinates
+            if (pos.x > this.boxZone.xMin && pos.x < this.boxZone.xMax &&
+                pos.z > this.boxZone.zMin && pos.z < this.boxZone.zMax &&
+                pos.y < 1.5 && pos.y > 0) { // Height check
+              currentScore++;
+            }
+          });
 
-// Player rig
-let rig = new THREE.Group(); rig.add(camera); scene.add(rig);
-camera.position.set(0,1.6,3);
+          this.score = currentScore;
+          
+          // Update GUI
+          if (this.score >= this.totalBalls) {
+            this.uiText.setAttribute('value', 'YOU WIN!');
+            this.uiText.setAttribute('color', '#00FF00');
+            this.winText.setAttribute('visible', true);
+          } else {
+            this.uiText.setAttribute('value', 'Move ball to box: ' + this.score + '/10');
+            this.uiText.setAttribute('color', 'white');
+            this.winText.setAttribute('visible', false);
+          }
+        },
 
-// Simple NPC
-let npc = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.2,0.4), new THREE.MeshStandardMaterial({color:0xff6666}));
-npc.position.set(4,0.6,0); scene.add(npc);
-let npcTarget = new THREE.Vector3(-4,0.6,0);
+        resetGame: function() {
+          // Remove old balls
+          this.balls.forEach(ball => {
+            ball.parentNode.removeChild(ball);
+          });
+          this.balls = [];
+          this.score = 0;
+          this.winText.setAttribute('visible', false);
+          // Spawn new ones
+          this.spawnBalls();
+        }
+      });
 
-// Pickup object
-let box = new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4), new THREE.MeshStandardMaterial({color:0x66ccff}));
-box.position.set(0,0.2,-2); scene.add(box);
-box.userData.pickable = true;
+      // 2. SIMPLE GRAB COMPONENT
+      // This handles grabbing physics objects with controllers
+      AFRAME.registerComponent('simple-grab', {
+        init: function () {
+          this.el.addEventListener('triggerdown', this.onGrab.bind(this));
+          this.el.addEventListener('triggerup', this.onRelease.bind(this));
+          this.grabbedEl = null;
+        },
+        onGrab: function () {
+          // Find closest ball
+          let balls = document.querySelectorAll('.ball');
+          let closest = null;
+          let minDist = 0.5; // Grab distance
 
-// Controllers and raycast pickup
-let controller = renderer.xr.getController(0);
-controller.addEventListener('selectstart', onSelectStart);
-controller.addEventListener('selectend', onSelectEnd);
-scene.add(controller);
-let tempMatrix = new THREE.Matrix4();
-let grabbed = null;
+          balls.forEach(ball => {
+            let dist = this.el.object3D.position.distanceTo(ball.object3D.position);
+            if (dist < minDist) {
+              closest = ball;
+              minDist = dist;
+            }
+          });
 
-function onSelectStart(){ tempMatrix.identity().extractRotation(controller.matrixWorld);
-  let ray = new THREE.Raycaster(); ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  ray.ray.direction.set(0,0,-1).applyMatrix4(tempMatrix);
-  let hits = ray.intersectObjects(scene.children, true);
-  if(hits.length && hits[0].object.userData.pickable){ grabbed = hits[0].object; controller.add(grabbed); grabbed.position.set(0,0,-0.3); }
-}
-function onSelectEnd(){ if(grabbed){ scene.add(grabbed); grabbed.position.setFromMatrixPosition(controller.matrixWorld); grabbed = null; }}
+          if (closest) {
+            this.grabbedEl = closest;
+            // Turn off physics while holding so it moves with hand
+            this.grabbedEl.removeAttribute('dynamic-body'); 
+            this.el.object3D.attach(this.grabbedEl.object3D);
+          }
+        },
+        onRelease: function () {
+          if (this.grabbedEl) {
+            this.el.sceneEl.object3D.attach(this.grabbedEl.object3D);
+            // Re-enable physics to let it drop
+            this.grabbedEl.setAttribute('dynamic-body', 'shape: sphere; mass: 1');
+            this.grabbedEl = null;
+          }
+        }
+      });
+    </script>
+  </head>
+  <body>
+    
+    <a-scene physics="gravity: -9.8; restitution: 0.5" game-logic shadow="type: pcfsoft">
+      
+      <a-assets>
+        <img id="grass" src="https://cdn.aframe.io/a-painter/images/floor.jpg">
+      </a-assets>
 
-// Flight toggle
-let flying = false;
-window.addEventListener('keydown', e=>{ if(e.key==='f') flying=!flying; });
+      <a-sky color="#87CEEB"></a-sky> <a-plane src="#grass" repeat="10 10" position="0 0 0" rotation="-90 0 0" width="40" height="40" color="#7BC8A4" static-body shadow="receive: true"></a-plane>
 
-// Animation loop
-renderer.setAnimationLoop(()=> {
-  // snow fall
-  let p = snowPoints.geometry.attributes.position.array;
-  for(let i=0;i<count;i++){
-    p[3*i+1] -= 0.02;
-    if(p[3*i+1] < -1) p[3*i+1] = Math.random()*15 + 8;
-  }
-  snowPoints.geometry.attributes.position.needsUpdate = true;
+      <a-entity id="rig" movement-controls="speed: 0.15" position="0 0 2">
+        
+        <a-entity camera position="0 1.6 0" look-controls>
+          <a-text id="ui-text" 
+                  value="Move ball to box 0/10" 
+                  position="-0.7 0.3 -1" 
+                  scale="0.2 0.2 0.2"
+                  color="white"></a-text>
+        </a-entity>
 
-  // NPC simple patrol
-  npc.position.lerp(npcTarget, 0.01);
-  if(npc.position.distanceTo(npcTarget) < 0.2) npcTarget.x *= -1;
+        <a-entity id="leftHand" 
+                  hand-controls="hand: left; handModelStyle: lowPoly; color: #ffcccc" 
+                  simple-grab>
+        </a-entity>
 
-  // flight
-  if(flying) rig.position.y += 0.05; else if(rig.position.y>0) rig.position.y -= 0.05;
+        <a-entity id="rightHand" 
+                  hand-controls="hand: right; handModelStyle: lowPoly; color: #ffcccc" 
+                  simple-grab>
+        </a-entity>
+      </a-entity>
 
-  renderer.render(scene, camera);
-});
-</script>
-</body>
+      <a-entity position="0 0.1 -5">
+        <a-box position="0 0 0" width="2" height="0.1" depth="2" color="brown" static-body></a-box>
+        <a-box position="-1 0.5 0" width="0.1" height="1" depth="2" color="brown" static-body></a-box>
+        <a-box position="1 0.5 0" width="0.1" height="1" depth="2" color="brown" static-body></a-box>
+        <a-box position="0 0.5 -1" width="2.1" height="1" depth="0.1" color="brown" static-body></a-box>
+        <a-box position="0 0.5 1" width="2.1" height="1" depth="0.1" color="brown" static-body></a-box>
+        
+        <a-text id="win-text" value="Winner!\nPress X to Retry" 
+                position="0 1.5 0" align="center" color="yellow" visible="false" scale="2 2 2"></a-text>
+      </a-entity>
+
+      <a-entity light="type: ambient; color: #BBB"></a-entity>
+      <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1" cast-shadow="true"></a-entity>
+
+    </a-scene>
+  </body>
 </html>
