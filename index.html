@@ -1,33 +1,28 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>VR Ball Sorter</title>
+    <title>VR Ball Sorter - Hold to Grab</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
 
     <script>
-      // 1. GAME LOGIC COMPONENT
+      // 1. GAME LOGIC (Score, Win, Reset)
       AFRAME.registerComponent('game-logic', {
         init: function () {
           this.score = 0;
           this.totalBalls = 10;
           this.balls = [];
-          this.boxZone = { xMin: -1, xMax: 1, zMin: -6, zMax: -4 }; // Area of the box
+          // Define the winning area (The Box coordinates)
+          this.boxZone = { xMin: -1, xMax: 1, zMin: -6, zMax: -4 }; 
           this.uiText = document.querySelector('#ui-text');
           this.winText = document.querySelector('#win-text');
           
-          // Generate Balls
           this.spawnBalls();
 
-          // Listen for X button on controllers to reset
+          // Reset buttons (X or A)
           this.el.sceneEl.addEventListener('xbuttondown', () => { this.resetGame(); });
-          this.el.sceneEl.addEventListener('abuttondown', () => { this.resetGame(); }); // A button as backup
-          
-          // Keyboard backup for testing on PC (Press 'R')
-          window.addEventListener('keydown', (e) => {
-            if(e.key === 'r' || e.key === 'x') this.resetGame();
-          });
+          this.el.sceneEl.addEventListener('abuttondown', () => { this.resetGame(); });
         },
 
         spawnBalls: function() {
@@ -36,13 +31,14 @@
             let ball = document.createElement('a-sphere');
             ball.setAttribute('radius', '0.2');
             ball.setAttribute('color', 'red');
+            // Random position above the grass
             ball.setAttribute('position', {
               x: (Math.random() * 4) - 2, 
-              y: 2 + (Math.random() * 2), 
+              y: 1 + (Math.random() * 2), 
               z: (Math.random() * 4) - 2
             });
-            ball.setAttribute('dynamic-body', 'shape: sphere; mass: 1');
-            ball.setAttribute('grabbable', '');
+            // Dynamic body = Physics enabled (gravity/collisions)
+            ball.setAttribute('dynamic-body', 'shape: sphere; mass: 5; restitution: 0.5');
             ball.setAttribute('class', 'ball');
             ball.setAttribute('shadow', '');
             scene.appendChild(ball);
@@ -51,24 +47,23 @@
         },
 
         tick: function () {
-          // Check win condition every frame
           let currentScore = 0;
-          
           this.balls.forEach(ball => {
-            let pos = ball.object3D.position;
-            // Check if ball is inside the hollow box coordinates
-            if (pos.x > this.boxZone.xMin && pos.x < this.boxZone.xMax &&
-                pos.z > this.boxZone.zMin && pos.z < this.boxZone.zMax &&
-                pos.y < 1.5 && pos.y > 0) { // Height check
-              currentScore++;
+            if (ball.object3D) {
+                let pos = ball.object3D.position;
+                // Check if ball is physically inside the box walls
+                if (pos.x > this.boxZone.xMin && pos.x < this.boxZone.xMax &&
+                    pos.z > this.boxZone.zMin && pos.z < this.boxZone.zMax &&
+                    pos.y < 1.0) { 
+                  currentScore++;
+                }
             }
           });
 
           this.score = currentScore;
           
-          // Update GUI
           if (this.score >= this.totalBalls) {
-            this.uiText.setAttribute('value', 'YOU WIN!');
+            this.uiText.setAttribute('value', 'YOU WIN! (Press X to Reset)');
             this.uiText.setAttribute('color', '#00FF00');
             this.winText.setAttribute('visible', true);
           } else {
@@ -79,31 +74,30 @@
         },
 
         resetGame: function() {
-          // Remove old balls
           this.balls.forEach(ball => {
-            ball.parentNode.removeChild(ball);
+            if(ball.parentNode) ball.parentNode.removeChild(ball);
           });
           this.balls = [];
           this.score = 0;
-          this.winText.setAttribute('visible', false);
-          // Spawn new ones
           this.spawnBalls();
         }
       });
 
-      // 2. SIMPLE GRAB COMPONENT
-      // This handles grabbing physics objects with controllers
-      AFRAME.registerComponent('simple-grab', {
+      // 2. GRAB LOGIC (Updated for HOLD TO GRAB)
+      AFRAME.registerComponent('hold-grab', {
         init: function () {
-          this.el.addEventListener('triggerdown', this.onGrab.bind(this));
-          this.el.addEventListener('triggerup', this.onRelease.bind(this));
           this.grabbedEl = null;
+          
+          // Use 'gripdown' (Squeeze) and 'gripup' (Release)
+          this.el.addEventListener('gripdown', this.onGrab.bind(this));
+          this.el.addEventListener('gripup', this.onRelease.bind(this));
         },
+
         onGrab: function () {
-          // Find closest ball
+          // 1. Find the closest ball to the hand
           let balls = document.querySelectorAll('.ball');
           let closest = null;
-          let minDist = 0.5; // Grab distance
+          let minDist = 0.5; // Must be within 0.5 meters
 
           balls.forEach(ball => {
             let dist = this.el.object3D.position.distanceTo(ball.object3D.position);
@@ -113,18 +107,26 @@
             }
           });
 
+          // 2. If we found a ball, grab it
           if (closest) {
             this.grabbedEl = closest;
-            // Turn off physics while holding so it moves with hand
-            this.grabbedEl.removeAttribute('dynamic-body'); 
+            
+            // REMOVE physics so it doesn't fall out of hand
+            this.grabbedEl.removeAttribute('dynamic-body');
+            
+            // Attach ball to the hand
             this.el.object3D.attach(this.grabbedEl.object3D);
           }
         },
+
         onRelease: function () {
           if (this.grabbedEl) {
+            // 1. Attach ball back to the scene (World)
             this.el.sceneEl.object3D.attach(this.grabbedEl.object3D);
-            // Re-enable physics to let it drop
-            this.grabbedEl.setAttribute('dynamic-body', 'shape: sphere; mass: 1');
+            
+            // 2. ADD physics back so it falls/rolls
+            this.grabbedEl.setAttribute('dynamic-body', 'shape: sphere; mass: 5; restitution: 0.5');
+            
             this.grabbedEl = null;
           }
         }
@@ -133,48 +135,45 @@
   </head>
   <body>
     
-    <a-scene physics="gravity: -9.8; restitution: 0.5" game-logic shadow="type: pcfsoft">
+    <a-scene physics="gravity: -9.8" game-logic shadow="type: pcfsoft">
       
       <a-assets>
         <img id="grass" src="https://cdn.aframe.io/a-painter/images/floor.jpg">
       </a-assets>
 
-      <a-sky color="#87CEEB"></a-sky> <a-plane src="#grass" repeat="10 10" position="0 0 0" rotation="-90 0 0" width="40" height="40" color="#7BC8A4" static-body shadow="receive: true"></a-plane>
+      <a-sky color="#87CEEB"></a-sky> 
+      
+      <a-plane src="#grass" repeat="10 10" position="0 0 0" rotation="-90 0 0" width="40" height="40" color="#7BC8A4" static-body shadow="receive: true"></a-plane>
 
-      <a-entity id="rig" movement-controls="speed: 0.15" position="0 0 2">
+      <a-entity id="rig" movement-controls="speed: 0.2" position="0 0 2">
         
         <a-entity camera position="0 1.6 0" look-controls>
-          <a-text id="ui-text" 
-                  value="Move ball to box 0/10" 
-                  position="-0.7 0.3 -1" 
-                  scale="0.2 0.2 0.2"
-                  color="white"></a-text>
+           <a-text id="ui-text" value="Loading..." position="-0.7 0.3 -1" scale="0.2 0.2 0.2"></a-text>
         </a-entity>
 
         <a-entity id="leftHand" 
                   hand-controls="hand: left; handModelStyle: lowPoly; color: #ffcccc" 
-                  simple-grab>
+                  hold-grab>
         </a-entity>
 
         <a-entity id="rightHand" 
                   hand-controls="hand: right; handModelStyle: lowPoly; color: #ffcccc" 
-                  simple-grab>
+                  hold-grab>
         </a-entity>
       </a-entity>
 
-      <a-entity position="0 0.1 -5">
-        <a-box position="0 0 0" width="2" height="0.1" depth="2" color="brown" static-body></a-box>
-        <a-box position="-1 0.5 0" width="0.1" height="1" depth="2" color="brown" static-body></a-box>
-        <a-box position="1 0.5 0" width="0.1" height="1" depth="2" color="brown" static-body></a-box>
-        <a-box position="0 0.5 -1" width="2.1" height="1" depth="0.1" color="brown" static-body></a-box>
-        <a-box position="0 0.5 1" width="2.1" height="1" depth="0.1" color="brown" static-body></a-box>
+      <a-entity position="0 0 -5">
+        <a-box position="0 0 0" width="2" height="0.1" depth="2" color="#8B4513" static-body></a-box>
+        <a-box position="-1 0.5 0" width="0.1" height="1" depth="2" color="#A0522D" static-body></a-box>
+        <a-box position="1 0.5 0" width="0.1" height="1" depth="2" color="#A0522D" static-body></a-box>
+        <a-box position="0 0.5 -1" width="2.1" height="1" depth="0.1" color="#A0522D" static-body></a-box>
+        <a-box position="0 0.5 1" width="2.1" height="1" depth="0.1" color="#A0522D" static-body></a-box>
         
-        <a-text id="win-text" value="Winner!\nPress X to Retry" 
-                position="0 1.5 0" align="center" color="yellow" visible="false" scale="2 2 2"></a-text>
+        <a-text id="win-text" value="WINNER!" position="0 2 0" align="center" color="yellow" visible="false" scale="3 3 3"></a-text>
       </a-entity>
 
       <a-entity light="type: ambient; color: #BBB"></a-entity>
-      <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1" cast-shadow="true"></a-entity>
+      <a-entity light="type: directional; color: #FFF; intensity: 0.8" position="-1 2 1" cast-shadow="true"></a-entity>
 
     </a-scene>
   </body>
