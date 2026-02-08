@@ -1,87 +1,49 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>VR Ball Sorter - Close Grab</title>
+    <title>Meta Quest - Precision Grab</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
 
     <script>
-      // --- 1. GAME LOGIC (Score, Win, Reset) ---
       AFRAME.registerComponent('game-logic', {
         init: function () {
           this.score = 0;
-          this.totalBalls = 10;
           this.balls = [];
           this.boxZone = { xMin: -1, xMax: 1, zMin: -6, zMax: -4 }; 
-          this.uiText = document.querySelector('#ui-text');
-          this.winText = document.querySelector('#win-text');
-          
           this.spawnBalls();
-
-          // Reset buttons (X or A)
           this.el.sceneEl.addEventListener('xbuttondown', () => { this.resetGame(); });
-          this.el.sceneEl.addEventListener('abuttondown', () => { this.resetGame(); });
         },
-
         spawnBalls: function() {
           let scene = this.el.sceneEl;
-          // Clear old balls just in case
-          this.balls.forEach(b => { if(b.parentNode) b.parentNode.removeChild(b); });
-          this.balls = [];
-
-          for (let i = 0; i < this.totalBalls; i++) {
+          for (let i = 0; i < 10; i++) {
             let ball = document.createElement('a-sphere');
-            ball.setAttribute('radius', '0.2');
+            ball.setAttribute('radius', '0.15');
             ball.setAttribute('color', 'red');
-            ball.setAttribute('position', {
-              x: (Math.random() * 4) - 2, 
-              y: 1 + (Math.random() * 2), 
-              z: (Math.random() * 4) - 2
-            });
-            ball.setAttribute('dynamic-body', 'shape: sphere; mass: 5; restitution: 0.5');
+            ball.setAttribute('position', {x: (Math.random() * 2) - 1, y: 1, z: (Math.random() * 2) - 1});
+            ball.setAttribute('dynamic-body', 'shape: sphere; mass: 2');
             ball.setAttribute('class', 'ball');
-            ball.setAttribute('shadow', '');
             scene.appendChild(ball);
             this.balls.push(ball);
           }
         },
-
         tick: function () {
-          let currentScore = 0;
+          let count = 0;
           this.balls.forEach(ball => {
-            if (ball.object3D) {
-                let pos = ball.object3D.position;
-                if (pos.x > this.boxZone.xMin && pos.x < this.boxZone.xMax &&
-                    pos.z > this.boxZone.zMin && pos.z < this.boxZone.zMax &&
-                    pos.y < 1.0) { 
-                  currentScore++;
-                }
-            }
+            let p = ball.object3D.position;
+            if (p.x > -1 && p.x < 1 && p.z > -6 && p.z < -4 && p.y < 1) count++;
           });
-
-          this.score = currentScore;
-          
-          if (this.score >= this.totalBalls) {
-            this.uiText.setAttribute('value', 'YOU WIN! (Press X to Reset)');
-            this.uiText.setAttribute('color', '#00FF00');
-            this.winText.setAttribute('visible', true);
-          } else {
-            this.uiText.setAttribute('value', 'Move ball to box: ' + this.score + '/10');
-            this.uiText.setAttribute('color', 'white');
-            this.winText.setAttribute('visible', false);
-          }
+          document.querySelector('#ui-text').setAttribute('value', 'Move ball to box: ' + count + '/10');
         },
-
-        resetGame: function() {
-          this.spawnBalls();
-        }
+        resetGame: function() { location.reload(); }
       });
 
-      // --- 2. GRAB LOGIC (FIXED DISTANCE) ---
+      // FIXED GRAB COMPONENT
       AFRAME.registerComponent('hold-grab', {
         init: function () {
           this.grabbedEl = null;
+          // Listen for the Grip button
           this.el.addEventListener('gripdown', this.onGrab.bind(this));
           this.el.addEventListener('gripup', this.onRelease.bind(this));
         },
@@ -89,12 +51,10 @@
         onGrab: function () {
           let balls = document.querySelectorAll('.ball');
           let closest = null;
-          
-          // *** FIX HERE: Changed from 0.5 to 0.15 ***
-          // You must be very close to the ball now
-          let minDist = 0.15; 
+          let minDist = 0.25; // Small distance for accuracy
 
           balls.forEach(ball => {
+            // Get distance between hand and ball
             let dist = this.el.object3D.position.distanceTo(ball.object3D.position);
             if (dist < minDist) {
               closest = ball;
@@ -104,15 +64,21 @@
 
           if (closest) {
             this.grabbedEl = closest;
+            // Completey stop physics so it follows hand perfectly
             this.grabbedEl.removeAttribute('dynamic-body');
             this.el.object3D.attach(this.grabbedEl.object3D);
+            // Visual feedback
+            this.grabbedEl.setAttribute('color', 'yellow');
           }
         },
 
         onRelease: function () {
           if (this.grabbedEl) {
+            // Return ball to the world
             this.el.sceneEl.object3D.attach(this.grabbedEl.object3D);
-            this.grabbedEl.setAttribute('dynamic-body', 'shape: sphere; mass: 5; restitution: 0.5');
+            // Restart physics
+            this.grabbedEl.setAttribute('dynamic-body', 'shape: sphere; mass: 2');
+            this.grabbedEl.setAttribute('color', 'red');
             this.grabbedEl = null;
           }
         }
@@ -120,45 +86,26 @@
     </script>
   </head>
   <body>
-    
-    <a-scene physics="gravity: -9.8" game-logic shadow="type: pcfsoft">
-      
-      <a-assets>
-        <img id="grass" src="https://cdn.aframe.io/a-painter/images/floor.jpg">
-      </a-assets>
+    <a-scene physics="gravity: -9.8" game-logic>
+      <a-sky color="#87CEEB"></a-sky>
+      <a-plane position="0 0 0" rotation="-90 0 0" width="50" height="50" color="#7BC8A4" static-body></a-plane>
 
-      <a-sky color="#87CEEB"></a-sky> 
-      <a-plane src="#grass" repeat="10 10" position="0 0 0" rotation="-90 0 0" width="40" height="40" color="#7BC8A4" static-body shadow="receive: true"></a-plane>
-
-      <a-entity id="rig" movement-controls="speed: 0.15" position="0 0 2">
+      <a-entity id="rig" movement-controls position="0 0 2">
         <a-entity camera position="0 1.6 0" look-controls>
-           <a-text id="ui-text" value="Loading..." position="-0.7 0.3 -1" scale="0.2 0.2 0.2"></a-text>
+           <a-text id="ui-text" value="Balls: 0/10" position="-0.7 0.4 -1" scale="0.3 0.3 0.3" color="white"></a-text>
         </a-entity>
-
-        <a-entity id="leftHand" 
-                  hand-controls="hand: left; handModelStyle: lowPoly; color: #ffcccc" 
-                  hold-grab>
-                  <a-sphere radius="0.05" color="blue" opacity="0.3" visible="false"></a-sphere>
-        </a-entity>
-
-        <a-entity id="rightHand" 
-                  hand-controls="hand: right; handModelStyle: lowPoly; color: #ffcccc" 
-                  hold-grab>
-        </a-entity>
+        
+        <a-entity laser-controls="hand: left" hold-grab></a-entity>
+        <a-entity laser-controls="hand: right" hold-grab></a-entity>
       </a-entity>
 
       <a-entity position="0 0 -5">
-        <a-box position="0 0 0" width="2" height="0.1" depth="2" color="#8B4513" static-body></a-box>
-        <a-box position="-1 0.5 0" width="0.1" height="1" depth="2" color="#A0522D" static-body></a-box>
-        <a-box position="1 0.5 0" width="0.1" height="1" depth="2" color="#A0522D" static-body></a-box>
-        <a-box position="0 0.5 -1" width="2.1" height="1" depth="0.1" color="#A0522D" static-body></a-box>
-        <a-box position="0 0.5 1" width="2.1" height="1" depth="0.1" color="#A0522D" static-body></a-box>
-        <a-text id="win-text" value="WINNER!" position="0 2 0" align="center" color="yellow" visible="false" scale="3 3 3"></a-text>
+        <a-box position="0 0 0" width="2" height="0.1" depth="2" color="brown" static-body></a-box>
+        <a-box position="-1 0.5 0" width="0.1" height="1" depth="2" color="brown" static-body></a-box>
+        <a-box position="1 0.5 0" width="0.1" height="1" depth="2" color="brown" static-body></a-box>
+        <a-box position="0 0.5 -1" width="2.1" height="1" depth="0.1" color="brown" static-body></a-box>
+        <a-box position="0 0.5 1" width="2.1" height="1" depth="0.1" color="brown" static-body></a-box>
       </a-entity>
-
-      <a-entity light="type: ambient; color: #BBB"></a-entity>
-      <a-entity light="type: directional; color: #FFF; intensity: 0.8" position="-1 2 1" cast-shadow="true"></a-entity>
-
     </a-scene>
   </body>
 </html>
